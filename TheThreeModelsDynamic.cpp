@@ -19,18 +19,18 @@ typedef complex<double> doublec;
 #define npart 1
 #define neq (2*npart)
 
-#define nstep 1000
+//#define nstep 1000
 
-constexpr int numRuns = 100000;
+constexpr int numRuns = 1;
 
-#define LLG 1
-#undef LLG
+#define LLG_DYN 1
+//#undef LLG_DYN
 #define LLG_TIMING 1
 #undef LLG_TIMING
 #define SW 1
 #undef SW
 #define SW_TIMING 1
-//#undef SW_TIMING
+#undef SW_TIMING
 #define SW_APPROX 1
 #undef SW_APPROX
 #define SW_APPROX_TIMING 1
@@ -78,39 +78,15 @@ double SW_fcn(double x, void* params);
 void SW_angle_single_full(int part, double* sol, struct sReadData Medium_single, struct Camp H);
 void SW_approx(int part, double* sol, struct sReadData Medium_single, struct Camp H);
 
-//static struct sAnizo Anizo_params[npart];
-//struct sReadData Medium[npart];
-//struct Camp H[nstep], Hext;
-//struct Moment M[nstep][npart], Msys;
-
-static std::array<struct sAnizo, npart>Anizo_params{};
-static std::array<struct sReadData, npart>Medium{};
-static std::array<struct Camp, nstep> H{};
-static struct Camp Hext;
-static std::array<std::array<struct Moment, npart>, nstep> M{};
-struct Moment Msys;
-
-//double Hx_part[npart];
-//double Hy_part[npart];
-//double Hz_part[npart];
-static std::array<double, npart> Hx_part{};
-static std::array<double, npart> Hy_part{};
-static std::array<double, npart> Hz_part{};
-
-//static int neighbours[npart];
-//static struct sCoef Position_Coef[npart][n_max_vec];
-static std::array<int, npart> neighbours{};
-static std::array<std::array<struct sCoef, n_max_vec>, npart> Position_Coef{};
-
 //******************************************************
 
-const double VolumTotal = 1 * npart;
+constexpr double VolumTotal = 1 * npart;
 
-const double alpha = 0.01;
-const double miu0 = 4.0e-7 * M_PI;
+constexpr double alpha = 0.01;
+constexpr double miu0 = 4.0e-7 * M_PI;
 
-const double Ms = 795774.7154594767; // 2.668e5;
-const double K1 = 1.0e5;
+constexpr double Ms = 795774.7154594767; // 2.668e5;
+constexpr double K1 = 1.0e5;
 
 const double gamma = 2.210173e5;
 const double time_norm = (1.0 + alpha * alpha) / gamma / Ms;
@@ -126,12 +102,42 @@ double phi_0 = phi_ea + 1.0e-4;
 
 const double Hk = 2.0 * fabs(K1) / miu0 / Ms / Ms;
 
+constexpr double	Field_period = 10000.0;					// 1e5 picosec -> 1e-7 s		1e4 picosec -> 1e-8 s
+constexpr double	Freq_H = 1.0 / Field_period;			// 1e5 ps -> 1e7 Hz (10 MHz)	1e4 ps -> 1e8 Hz (100 MHz)
+constexpr int		nperiods = 1;
+constexpr double	t_max = nperiods * Field_period;
+
+constexpr double	Read_period = Field_period / 1000.0;	// 1e1 picosec -> 1e-11 s
+constexpr double	Freq_Read = 1.0 / Read_period;			// 1e1 ps -> 1e11 Hz (100 GHz)
+
+//vrem sa citim nperiods of Field_period cu Read_period
+constexpr int		nstep = nperiods * (Field_period / Read_period);
+constexpr double	t_step = t_max / (nstep - 1);		// reading time step
+
 double T_Larmor = 1.0 / (gamma * 2.0 * fabs(K1) / (miu0 * Ms) / (2.0 * M_PI)) * 1.0e12;
 
 const double Exch = 0.1;
 const double prag_vecini = 5.0e-3;
 
-char save_file_1_LLG[500] = "E:\\Stoleriu\\C\\special\\3d\\res\\2020\\SW---LLG\\Timing\\LLG_time_Js1-K1e5_th20_static-MHL.dat";
+//******************************************************
+
+static std::array<struct sAnizo, npart>Anizo_params{};
+static std::array<struct sReadData, npart>Medium{};
+static std::array<struct Camp, nstep> H{};
+static struct Camp Hext;
+static std::array<std::array<struct Moment, npart>, nstep> M{};
+struct Moment Msys;
+
+static std::array<double, npart> Hx_part{};
+static std::array<double, npart> Hy_part{};
+static std::array<double, npart> Hz_part{};
+
+static std::array<int, npart> neighbours{};
+static std::array<std::array<struct sCoef, n_max_vec>, npart> Position_Coef{};
+
+//******************************************************
+
+char save_file_1_LLG[500] = "E:\\Stoleriu\\C\\special\\3d\\res\\2020\\SW---LLG\\Timing\\LLG_time_Js1-K1e5_th20_100MHz-MHL.dat";
 char save_file_2_SW[500] = "E:\\Stoleriu\\C\\special\\3d\\res\\2020\\SW---LLG\\Timing\\SW_time_Js1-K1e5_th20_static-MHL.dat";
 char save_file_3_SWAPPROX[500] = "E:\\Stoleriu\\C\\special\\3d\\res\\2020\\SW---LLG\\Timing\\SWAPPROX_time_Js1-K1e5_th20_static-MHL.dat";
 
@@ -148,23 +154,14 @@ int main()
 	int i, j;
 
 	double       t = 0.0;
-	double       tend = 2000.0;
-	double		 tstep = 1.0 / (time_norm * 1.0e12);
+	//double       tend = 2000.0;
+	//double		 tstep = 1.0 / (time_norm * 1.0e12);
 	double		 last_t = 0.0;
 	double       y[neq], y_old[neq];
 
-	for (i = 0; i < nstep / 2; i++)
+	for (i = 0; i < nstep; i++)
 	{
-		H[i].H = FieldMax - (FieldMax - FieldMin) * i / (nstep / 2 - 1);
-		H[i].theta = theta_h;
-		H[i].phi = phi_h;
-		H[i].Hx = H[i].H * sin(H[i].theta) * cos(H[i].phi);
-		H[i].Hy = H[i].H * sin(H[i].theta) * sin(H[i].phi);
-		H[i].Hz = H[i].H * cos(H[i].theta);
-	}
-	for (i = nstep / 2; i < nstep; i++)
-	{
-		H[i].H = FieldMin + (FieldMax - FieldMin) * (i - nstep / 2) / (nstep / 2 - 1);
+		H[i].H = FieldMax * cos(i * nperiods * 2.0 * Pi / (nstep - 1));
 		H[i].theta = theta_h;
 		H[i].phi = phi_h;
 		H[i].Hx = H[i].H * sin(H[i].theta) * cos(H[i].phi);
@@ -198,7 +195,7 @@ int main()
 	//////////////////////////////////////////////////////////////////////////
 	// MHL LLG
 	//////////////////////////////////////////////////////////////////////////
-#ifdef LLG
+#ifdef LLG_DYN
 	{
 		FILE* fp;
 		int num_LLG = 0;
@@ -234,10 +231,9 @@ int main()
 
 			fp = fopen(save_file_1_LLG, "a");
 
-			while (((stability_test(y, y_old)) > 1.0e-4) || (num_LLG < 100))
-				//while (((t * time_norm * 1.0e12) - last_t) < stepT)
+
 			{
-				gsl_odeiv2_driver_apply(d, &t, t + tstep, y);
+				gsl_odeiv2_driver_apply(d, &t, t + t_step, y);
 
 				Msys.Mx = 0.0; Msys.My = 0.0; Msys.Mz = 0.0;
 
@@ -645,7 +641,7 @@ struct Camp H_de_t(double t)
 
 	double ampl = FieldMax;
 
-	H.H = ampl * cos(Pix2 * t /*/ perioada*/);
+	H.H = ampl * cos(Pix2 * t / Field_period);
 
 	H.Hx = H.H * sin(H.theta) * cos(H.phi);
 	H.Hy = H.H * sin(H.theta) * sin(H.phi);
