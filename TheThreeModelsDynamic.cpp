@@ -3,8 +3,8 @@
 #include <stdio.h>
 #include <math.h>
 #include <array>
+#include <complex>
 #include <windows.h>
-
 
 #include <gsl/gsl_errno.h>
 #include <gsl/gsl_matrix.h>
@@ -14,12 +14,14 @@
 
 using namespace std;
 
+typedef complex<double> doublec;
+
 #define npart 1
 #define neq (2*npart)
 
 #define nstep 1000
 
-constexpr int numRuns = 10000;
+constexpr int numRuns = 100000;
 
 #define LLG 1
 #undef LLG
@@ -28,9 +30,11 @@ constexpr int numRuns = 10000;
 #define SW 1
 #undef SW
 #define SW_TIMING 1
-#undef SW_TIMING
+//#undef SW_TIMING
 #define SW_APPROX 1
 #undef SW_APPROX
+#define SW_APPROX_TIMING 1
+#undef SW_APPROX_TIMING
 
 constexpr int n_max_vec = 30;
 
@@ -61,6 +65,7 @@ public: double Hk_fcn, H_fcn, theta0_fcn;
 };
 
 struct Camp H_de_t(double t);
+double SafeAcos(double x);
 void position_coeficients(struct sReadData D1, struct sReadData D2, struct sCoef* Pos_Coef, double* dist);
 void function_neighbours(void);
 void anisotropy_coef(void);
@@ -71,6 +76,7 @@ int fcn_xyz(double t, const double y[], double yprime[], void* params);
 double stability_test(double solutie[], double solutie_old[]);
 double SW_fcn(double x, void* params);
 void SW_angle_single_full(int part, double* sol, struct sReadData Medium_single, struct Camp H);
+void SW_approx(int part, double* sol, struct sReadData Medium_single, struct Camp H);
 
 //static struct sAnizo Anizo_params[npart];
 //struct sReadData Medium[npart];
@@ -206,7 +212,6 @@ int main()
 		double ug_ph = phi_h;
 		double MHL_projection;
 
-
 		//initial conditions
 		for (i = 0; i < npart; i++)
 		{
@@ -219,14 +224,11 @@ int main()
 
 		for (int h = 0; h < nstep; h++)
 		{
-
 			for (j = 0; j < neq; j++)
 				y_old[j] = y[j];
 
-
 			Hext = H[h];
 			num_LLG = 0;
-
 
 			gsl_odeiv2_driver* d = gsl_odeiv2_driver_alloc_y_new(&sys, gsl_odeiv2_step_rk8pd, 1e-6, 1e-8, 1e-8);
 
@@ -276,7 +278,6 @@ int main()
 			double ug_ph = phi_h;
 			double MHL_projection;
 
-
 			//initial conditions
 			for (i = 0; i < npart; i++)
 			{
@@ -289,7 +290,6 @@ int main()
 
 			for (int h = 0; h < nstep; h++)
 			{
-
 				for (j = 0; j < neq; j++)
 					y_old[j] = y[j];
 
@@ -485,7 +485,7 @@ int main()
 	{
 		FILE* fp;
 
-		fp = fopen(save_file_2_SW, "w");
+		fp = fopen(save_file_3_SWAPPROX, "w");
 		fclose(fp);
 
 		double ug_th = theta_h;
@@ -506,7 +506,7 @@ int main()
 
 		Hext = H[0];
 		for (j = 0; j < npart; j++)
-			SW_angle_single_full(j, &y[2 * j + 0], Medium[j], Hext);
+			SW_approx(j, &y[2 * j + 0], Medium[j], Hext);
 
 		for (j = 0; j < npart; j++)
 		{
@@ -520,10 +520,6 @@ int main()
 		for (int h = 0; h < nstep; h++)
 		{
 			Hext = H[h];
-			if (H[h].H < 0.0)
-			{
-				printf("a");
-			}
 
 			for (j = 0; j < npart; j++)
 			{
@@ -533,10 +529,10 @@ int main()
 				y_old[2 * j + 1] = y[2 * j + 1];
 			}
 
-			fp = fopen(save_file_2_SW, "a");
+			fp = fopen(save_file_3_SWAPPROX, "a");
 
 			for (j = 0; j < npart; j++)
-				SW_angle_single_full(j, &y[2 * j + 0], Medium[j], Hext);
+				SW_approx(j, &y[2 * j + 0], Medium[j], Hext);
 
 			Msys.Mx = 0.0; Msys.My = 0.0; Msys.Mz = 0.0;
 			for (j = 0; j < npart; j++)
@@ -561,7 +557,76 @@ int main()
 		}
 	}
 #endif
+#ifdef SW_APPROX_TIMING
+	{
+		DWORD starttime, elapsedtime;
+		starttime = timeGetTime();
+		for (int numMHLs = 0; numMHLs < numRuns; numMHLs++)
+		{
+			double ug_th = theta_h;
+			double ug_ph = phi_h;
+			double MHL_projection;
 
+			//initial conditions
+		//////////////////////////////////// SATURARTE!
+			for (i = 0; i < npart; i++)
+			{
+				Medium[i].theta_sol = H[0].theta;
+				Medium[i].phi_sol = H[0].phi;
+				y[2 * i + 0] = Medium[i].theta_sol;
+				y[2 * i + 1] = Medium[i].phi_sol;
+				y_old[2 * i + 0] = y[2 * i + 0];
+				y_old[2 * i + 1] = y[2 * i + 1];
+			}
+
+			Hext = H[0];
+			for (j = 0; j < npart; j++)
+				SW_approx(j, &y[2 * j + 0], Medium[j], Hext);
+
+			for (j = 0; j < npart; j++)
+			{
+				Medium[j].theta_sol = y[2 * j + 0];
+				Medium[j].phi_sol = y[2 * j + 1];
+				y_old[2 * j + 0] = y[2 * j + 0];
+				y_old[2 * j + 1] = y[2 * j + 1];
+			}
+			/////////////////////////////////////////////////
+
+			for (int h = 0; h < nstep; h++)
+			{
+				Hext = H[h];
+
+				for (j = 0; j < npart; j++)
+				{
+					y[2 * j + 0] = Medium[j].theta_sol;
+					y[2 * j + 1] = Medium[j].phi_sol;
+					y_old[2 * j + 0] = y[2 * j + 0];
+					y_old[2 * j + 1] = y[2 * j + 1];
+				}
+
+				for (j = 0; j < npart; j++)
+					SW_approx(j, &y[2 * j + 0], Medium[j], Hext);
+
+				Msys.Mx = 0.0; Msys.My = 0.0; Msys.Mz = 0.0;
+				for (j = 0; j < npart; j++)
+				{
+					Medium[j].theta_sol = y[2 * j + 0];
+					Medium[j].phi_sol = y[2 * j + 1];
+					Msys.Mx += Medium[j].volume * sin(y[2 * j + 0]) * cos(y[2 * j + 1]);
+					Msys.My += Medium[j].volume * sin(y[2 * j + 0]) * sin(y[2 * j + 1]);
+					Msys.Mz += Medium[j].volume * cos(y[2 * j + 0]);
+				}
+				Msys.Mx /= VolumTotal;
+				Msys.My /= VolumTotal;
+				Msys.Mz /= VolumTotal;
+
+				MHL_projection = (Msys.Mx * sin(Hext.theta) * cos(Hext.phi) + Msys.My * sin(Hext.theta) * sin(Hext.phi) + Msys.Mz * cos(Hext.theta));
+			}
+		}
+		elapsedtime = timeGetTime() - starttime;
+		printf("Time Elapsed %10d mSecs \n", (int)elapsedtime);
+	}
+#endif
 	return(0);
 }
 
@@ -586,8 +651,16 @@ struct Camp H_de_t(double t)
 	H.Hy = H.H * sin(H.theta) * sin(H.phi);
 	H.Hz = H.H * cos(H.theta);
 
-
 	return H;
+}
+
+//**************************************************************************
+
+double SafeAcos(double x)
+{
+	if (x < -1.0) x = -1.0;
+	else if (x > 1.0) x = 1.0;
+	return acos(x);
 }
 
 //**************************************************************************
@@ -876,7 +949,10 @@ void SW_angle_single_full(int part, double* sol, struct sReadData Medium_single,
 	int status, n_sols, ram = 0;
 	int iter = 0, max_iter = 100;
 
-	double* sols, * limits;
+	//double* sols;
+	//double* limits;
+	std::array<double, 4> sols{};
+	std::array<double, 8> limits{};
 
 	const gsl_root_fsolver_type* T;
 	gsl_root_fsolver* s;
@@ -885,7 +961,7 @@ void SW_angle_single_full(int part, double* sol, struct sReadData Medium_single,
 	gsl_function F;
 
 	H.H = sqrt(H.Hx * H.Hx + H.Hy * H.Hy + H.Hz * H.Hz);
-	H.theta = acos(H.Hz / H.H);
+	H.theta = SafeAcos(H.Hz / H.H);
 	H.phi = atan2(H.Hy, H.Hx);
 
 	hx = sin(H.theta) * cos(H.phi);
@@ -897,15 +973,15 @@ void SW_angle_single_full(int part, double* sol, struct sReadData Medium_single,
 		mx = sin(sol[0]) * cos(sol[1]);
 		my = sin(sol[0]) * sin(sol[1]);
 		mz = cos(sol[0]);
-		loco_angle_M = acos(Anizo_params[part].ax * mx + Anizo_params[part].ay * my + Anizo_params[part].az * mz);
+		loco_angle_M = SafeAcos(Anizo_params[part].ax * mx + Anizo_params[part].ay * my + Anizo_params[part].az * mz);
 	}
 
-	loco_angle_H = acos(Anizo_params[part].ax * hx + Anizo_params[part].ay * hy + Anizo_params[part].az * hz);
+	loco_angle_H = SafeAcos(Anizo_params[part].ax * hx + Anizo_params[part].ay * hy + Anizo_params[part].az * hz);
 	double its_a_sin = sin(loco_angle_H);
 	double its_a_cos = cos(loco_angle_H);
-	double aux1 = pow(sin(loco_angle_H) * sin(loco_angle_H), (1.0 / 3.0));
-	double aux2 = pow(cos(loco_angle_H) * cos(loco_angle_H), (1.0 / 3.0));
-	g = pow((pow(sin(loco_angle_H) * sin(loco_angle_H), (1.0 / 3.0)) + pow(cos(loco_angle_H) * cos(loco_angle_H), (1.0 / 3.0))), -1.5);
+	double aux1 = pow(its_a_sin * its_a_sin, (1.0 / 3.0));
+	double aux2 = pow(its_a_cos * its_a_cos, (1.0 / 3.0));
+	g = pow(aux1 + aux2, -1.5);
 	Hc = Medium_single.k * Hk * g;
 
 	//parametrii functiei de rezolvat (in coordonate loco)
@@ -919,7 +995,7 @@ void SW_angle_single_full(int part, double* sol, struct sReadData Medium_single,
 	T = gsl_root_fsolver_brent;
 	/////////////////////////////////////////////////////////
 
-	loco_old_angle_M = acos(Anizo_params[part].ax * sin(sol[0]) * cos(sol[1]) + Anizo_params[part].ay * sin(sol[0]) * sin(sol[1]) + Anizo_params[part].az * cos(sol[0]));
+	loco_old_angle_M = SafeAcos(Anizo_params[part].ax * sin(sol[0]) * cos(sol[1]) + Anizo_params[part].ay * sin(sol[0]) * sin(sol[1]) + Anizo_params[part].az * cos(sol[0]));
 	if (loco_old_angle_M < Pis2)
 	{
 		state = 1;
@@ -931,8 +1007,8 @@ void SW_angle_single_full(int part, double* sol, struct sReadData Medium_single,
 
 	if (H.H == 0.0)
 	{
-		sols = (double*)calloc(1, sizeof(double));
-		limits = (double*)calloc(1, sizeof(double));
+		//sols = (double*)calloc(1, sizeof(double));
+		//limits = (double*)calloc(1, sizeof(double));
 		if (state > 0)
 		{
 			loco_angle_M = 0.0;
@@ -944,7 +1020,6 @@ void SW_angle_single_full(int part, double* sol, struct sReadData Medium_single,
 	}
 	else
 	{
-
 		temp_Hea = H.H * cos(loco_angle_H);
 		temp_Hha = H.H * sin(loco_angle_H);
 		if ((temp_Hea >= 0.0) && (temp_Hha >= 0.0))
@@ -969,8 +1044,8 @@ void SW_angle_single_full(int part, double* sol, struct sReadData Medium_single,
 		else
 			n_sols = 4;
 
-		sols = (double*)calloc(n_sols, sizeof(double));
-		limits = (double*)calloc(2 * n_sols, sizeof(double));
+		//sols = (double*)calloc(n_sols, sizeof(double));
+		//limits = (double*)calloc(2 * n_sols, sizeof(double));
 
 		//printf("%d: temp_angle: %lf      (Hea, Hha):  (%lf, %lf)\n", n_sols, temp_angle_H, temp_Hea, temp_Hha);
 
@@ -1027,7 +1102,6 @@ void SW_angle_single_full(int part, double* sol, struct sReadData Medium_single,
 				x_lo = gsl_root_fsolver_x_lower(s);
 				x_hi = gsl_root_fsolver_x_upper(s);
 				status = gsl_root_test_interval(x_lo, x_hi, 0, 1.0e-7);
-
 			} while (status == GSL_CONTINUE && iter < max_iter);
 			sols[scontor] = r;
 			gsl_root_fsolver_free(s);
@@ -1044,7 +1118,8 @@ void SW_angle_single_full(int part, double* sol, struct sReadData Medium_single,
 		else
 		{
 			int contor_sol_bune = 0;
-			double sol_bune[2];
+			//double sol_bune[2];
+			std::array<double, 2> sol_bune{};
 			for (int scontor = 0; scontor < n_sols; scontor++)
 			{
 				if ((Hk_fcn * cos(2.0 * sols[scontor]) + H_fcn * cos(sols[scontor] - theta0_fcn)) > 0)
@@ -1079,7 +1154,7 @@ void SW_angle_single_full(int part, double* sol, struct sReadData Medium_single,
 			hz *= (-1.0);
 		}
 
-		ug_ea_H = acos(Anizo_params[part].ax * hx + Anizo_params[part].ay * hy + Anizo_params[part].az * hz);
+		ug_ea_H = SafeAcos(Anizo_params[part].ax * hx + Anizo_params[part].ay * hy + Anizo_params[part].az * hz);
 
 		if (loco_angle_M <= Pi)
 		{
@@ -1096,7 +1171,7 @@ void SW_angle_single_full(int part, double* sol, struct sReadData Medium_single,
 		my = (temp_ea * Anizo_params[part].ay + temp_H * hy);
 		mz = (temp_ea * Anizo_params[part].az + temp_H * hz);
 
-		sol[0] = acos(mz);
+		sol[0] = SafeAcos(mz);
 
 		if ((mx == 0.0) && (my == 0.0))
 		{
@@ -1104,103 +1179,97 @@ void SW_angle_single_full(int part, double* sol, struct sReadData Medium_single,
 		}
 		else
 		{
-			sol[1] = acos(mx / sqrt(mx * mx + my * my));
+			sol[1] = SafeAcos(mx / sqrt(mx * mx + my * my));
 			if (my < 0)
 			{
 				sol[1] = Pix2 - sol[1];
 			}
 		}
 	}
-	free(sols);
-	free(limits);
+	// 	free(sols);
+	// 	free(limits);
 }
 
 //**************************************************************************
 
-void SW_approx(double th_h, double ph_h, double a, double* sol)
+void SW_approx(int part, double* sol, struct sReadData Medium_single, struct Camp H)//double th_h, double ph_h, double a, )
 {
-	// 	double g, temp_angle_H, temp_Hea, temp_Hha;
-	// 	double its_a_sin, its_a_cos, aux1, aux2;
-	// 	double hx, hy, hz, mx, my, mz;
-	// 	int status, n_sols, max_iter = 200, contor_sol_bune;
-	// 	double x_lo, x_hi, x;
-	// 	double d_eng1, d_eng2;
-	// 	double ug_ea_H, ug_ea_M, temp_ea, temp_H;
-	// 	double Eng_barM, prob;
-	// 	double r;
-	// 
-	// 	Camp *H_SW = new Camp[npart];
-	// 	double* loco_angle_H = new double[npart];
-	// 	double* loco_old_angle_M = new double[npart];
-	// 	double* loco_angle_M = new double[npart];
-	// 	double* altr_angle_M = new double[npart];
-	// 	double* Hc = new double[npart];
-	// 	double* tau = new double[npart];
-	// 	double* sol_bune = new double[2];
-	// 
-	// 	for (int part = 0; part < npart; part++) 
-	// 	{
-	// 		camp(th_h, ph_h, a, &H);
-	// 		Add_interactions(part, &H, sol);
-	// 		//H.Hamp = (H.Hamp < 1.0e-4) ? 1.1e-4 : H.Hamp;
-	// 		amplitudini[part] = H.Hamp;
-	// 		H_SW[part] = H;
-	// 
-	// 		hx = sin(H_SW[part].theta_h) * cos(H_SW[part].phi_h);
-	// 		hy = sin(H_SW[part].theta_h) * sin(H_SW[part].phi_h);
-	// 		hz = cos(H_SW[part].theta_h);
-	// 		loco_angle_H[part] = SafeAcos(P[part].eax * hx + P[part].eay * hy + P[part].eaz * hz);
-	// 
-	// 		mx = sin(sol[2 * part + 0]) * cos(sol[2 * part + 1]);
-	// 		my = sin(sol[2 * part + 0]) * sin(sol[2 * part + 1]);
-	// 		mz = cos(sol[2 * part + 0]);
-	// 		loco_old_angle_M[part] = SafeAcos(P[part].eax * mx + P[part].eay * my + P[part].eaz * mz);
-	// 
-	// 
-	// 		its_a_sin = sin(loco_angle_H[part]);
-	// 		its_a_cos = cos(loco_angle_H[part]);
-	// 		aux1 = pow(its_a_sin * its_a_sin, (1.0 / 3.0));
-	// 		aux2 = pow(its_a_cos * its_a_cos, (1.0 / 3.0));
-	// 		g = pow(aux1 + aux2, -1.5);
-	// 		Hc[part] = P[part].Hk * g;
-	// 	}
-	// 
-	// 	for (int part = 0; part < npart; part++) 
-	// 	{
-	// 		double h = H_SW[part].Hamp / P[part].Hk;
-	// 		double phi = loco_angle_H[part];
-	// 
-	// 		double hy = h * cos(phi);
-	// 		double hx = h * sin(phi);
-	// 
-	// 		double d = 1 - h * h;
-	// 
-	// 		doublec e(0.0, 0.0), fp(0.0, 0.0), fm(0.0, 0.0), mp(0.0, 0.0), mm(0.0, 0.0), mpx(0.0, 0.0), mmx(0.0, 0.0), t1(0.0, 0.0), t2(0.0, 0.0);
-	// 
-	// 		e = d * cos(acos(doublec(54.0 * hx * hx * hy * hy / d / d / d - 1.0)) / 3.0);
-	// 		fp = sqrt(9.0 * hy * hy + 6.0 * d + 6.0 * e);
-	// 		fm = -fp;
-	// 		mp = (fp + sqrt(2.0 * fp * fp - 18.0 * e + 54.0 * hy * (1.0 + hx * hx) / fp)) / 6.0 - hy / 2.0;
-	// 		mm = (fm - sqrt(2.0 * fm * fm - 18.0 * e + 54.0 * hy * (1.0 + hx * hx) / fm)) / 6.0 - hy / 2.0;
-	// 		mpx = sqrt(1.0 - mp * mp);
-	// 		mmx = sqrt(1.0 - mm * mm);
-	// 		t1 = atan(mpx / mp);
-	// 		t2 = atan(mmx / mm);
-	// 		sol_bune[0] = real(t1);
-	// 		sol_bune[1] = Pi + real(t2);
-	// 
-	// 		if (H_SW[part].Hamp == 0.0) {
-	// 			loco_angle_M[part] = (loco_old_angle_M[part] < Pis2) ? 0.0 : Pi;
-	// 		}
-	// 		if (H_SW[part].Hamp >= Hc[part]) {
-	// 			loco_angle_M[part] = (phi < Pis2) ? sol_bune[0] : sol_bune[1];
-	// 		}
-	// 		else {
-	// 			loco_angle_M[part] = (fabs(loco_old_angle_M[part] - sol_bune[0]) > fabs(loco_old_angle_M[part] - sol_bune[1])) ? sol_bune[1] : sol_bune[0];
-	// 			altr_angle_M[part] = (fabs(loco_old_angle_M[part] - sol_bune[0]) > fabs(loco_old_angle_M[part] - sol_bune[1])) ? sol_bune[0] : sol_bune[1];
-	// 		}
-	// 	}
-	// 
+	double g;
+	double its_a_sin, its_a_cos, aux1, aux2;
+	double hx, hy, hz, mx, my, mz;
+	double ug_ea_H, ug_ea_M, temp_ea, temp_H;
+
+	double loco_angle_H;
+	double loco_old_angle_M;
+	double loco_angle_M;
+	double altr_angle_M;
+	double Hc;
+	double sol_bune[2];
+
+	//camp(th_h, ph_h, a, &H);
+	//Add_interactions(part, &H, sol);
+	//H.Hamp = (H.Hamp < 1.0e-4) ? 1.1e-4 : H.Hamp;
+	//amplitudini[part] = H.Hamp;
+
+	H.H = sqrt(H.Hx * H.Hx + H.Hy * H.Hy + H.Hz * H.Hz);
+	H.theta = SafeAcos(H.Hz / H.H);
+	H.phi = atan2(H.Hy, H.Hx);
+
+	hx = sin(H.theta) * cos(H.phi);
+	hy = sin(H.theta) * sin(H.phi);
+	hz = cos(H.theta);
+	loco_angle_H = SafeAcos(Anizo_params[part].ax * hx + Anizo_params[part].ay * hy + Anizo_params[part].az * hz);
+
+
+	//	Convert_sol_to_loco(sol, loco_angle_M);
+	mx = sin(sol[0]) * cos(sol[1]);
+	my = sin(sol[0]) * sin(sol[1]);
+	mz = cos(sol[0]);
+	loco_old_angle_M = SafeAcos(Anizo_params[part].ax * mx + Anizo_params[part].ay * my + Anizo_params[part].az * mz);
+
+
+	its_a_sin = sin(loco_angle_H);
+	its_a_cos = cos(loco_angle_H);
+	aux1 = pow(its_a_sin * its_a_sin, (1.0 / 3.0));
+	aux2 = pow(its_a_cos * its_a_cos, (1.0 / 3.0));
+	g = pow(aux1 + aux2, -1.5);
+	Hc = Medium_single.k * Hk * g;
+
+	double Hk_fcn = Medium_single.k * Hk;
+	double H_fcn = H.H;
+	double h = H_fcn / Hk_fcn;
+	double phi = loco_angle_H;
+
+	hy = h * cos(phi);
+	hx = h * sin(phi);
+
+	double d = 1 - h * h;
+
+	doublec e(0.0, 0.0), fp(0.0, 0.0), fm(0.0, 0.0), mp(0.0, 0.0), mm(0.0, 0.0), mpx(0.0, 0.0), mmx(0.0, 0.0), t1(0.0, 0.0), t2(0.0, 0.0);
+
+	e = d * cos(acos(doublec(54.0 * hx * hx * hy * hy / d / d / d - 1.0)) / 3.0);
+	fp = sqrt(9.0 * hy * hy + 6.0 * d + 6.0 * e);
+	fm = -fp;
+	mp = (fp + sqrt(2.0 * fp * fp - 18.0 * e + 54.0 * hy * (1.0 + hx * hx) / fp)) / 6.0 - hy / 2.0;
+	mm = (fm - sqrt(2.0 * fm * fm - 18.0 * e + 54.0 * hy * (1.0 + hx * hx) / fm)) / 6.0 - hy / 2.0;
+	mpx = sqrt(1.0 - mp * mp);
+	mmx = sqrt(1.0 - mm * mm);
+	t1 = atan(mpx / mp);
+	t2 = atan(mmx / mm);
+	sol_bune[0] = real(t1);
+	sol_bune[1] = Pi + real(t2);
+
+	if (H.H == 0.0) {
+		loco_angle_M = (loco_old_angle_M < Pis2) ? 0.0 : Pi;
+	}
+	if (H.H >= Hc) {
+		loco_angle_M = (phi < Pis2) ? sol_bune[0] : sol_bune[1];
+	}
+	else {
+		loco_angle_M = (fabs(loco_old_angle_M - sol_bune[0]) > fabs(loco_old_angle_M - sol_bune[1])) ? sol_bune[1] : sol_bune[0];
+		altr_angle_M = (fabs(loco_old_angle_M - sol_bune[0]) > fabs(loco_old_angle_M - sol_bune[1])) ? sol_bune[0] : sol_bune[1];
+	}
+
 	// 	if (dezint == 1) {
 	// 		for (int part = 0; part < npart; part++) {
 	// 			if (H_SW[part].Hamp < Hc[part]) {
@@ -1213,32 +1282,21 @@ void SW_approx(double th_h, double ph_h, double a, double* sol)
 	// 			}
 	// 		}
 	// 	}
-	// 
-	// 	for (int part = 0; part < npart; part++) {
-	// 		ug_ea_H = loco_angle_H[part];
-	// 		ug_ea_M = loco_angle_M[part];
-	// 		temp_ea = (loco_angle_M[part] <= Pi) ? sin(ug_ea_H - ug_ea_M) / sin(ug_ea_H) : sin(ug_ea_H - (Pix2 - ug_ea_M)) / sin(ug_ea_H);
-	// 		temp_H = (loco_angle_M[part] <= Pi) ? sin(ug_ea_M) / sin(ug_ea_H) : sin(Pix2 - ug_ea_M) / sin(ug_ea_H);
-	// 
-	// 		hx = sin(H_SW[part].theta_h) * cos(H_SW[part].phi_h);
-	// 		hy = sin(H_SW[part].theta_h) * sin(H_SW[part].phi_h);
-	// 		hz = cos(H_SW[part].theta_h);
-	// 		mx = (temp_ea * P[part].eax + temp_H * hx);
-	// 		my = (temp_ea * P[part].eay + temp_H * hy);
-	// 		mz = (temp_ea * P[part].eaz + temp_H * hz);
-	// 
-	// 		sol[2 * part + 0] = SafeAcos(mz);
-	// 		sol[2 * part + 1] = atan2(my, mx);
-	// 	}
-	// 
-	// 	camp(th_h, ph_h, a, &H);
-	// 
-	// 	delete[] H_SW;
-	// 	delete[] loco_angle_H;
-	// 	delete[] loco_angle_M;
-	// 	delete[] loco_old_angle_M;
-	// 	delete[] altr_angle_M;
-	// 	delete[] Hc;
-	// 	delete[] tau;
-	// 	delete[] sol_bune;
+
+	ug_ea_H = loco_angle_H;
+	ug_ea_M = loco_angle_M;
+	temp_ea = (loco_angle_M <= Pi) ? sin(ug_ea_H - ug_ea_M) / sin(ug_ea_H) : sin(ug_ea_H - (Pix2 - ug_ea_M)) / sin(ug_ea_H);
+	temp_H = (loco_angle_M <= Pi) ? sin(ug_ea_M) / sin(ug_ea_H) : sin(Pix2 - ug_ea_M) / sin(ug_ea_H);
+
+	hx = sin(H.theta) * cos(H.phi);
+	hy = sin(H.theta) * sin(H.phi);
+	hz = cos(H.theta);
+	mx = (temp_ea * Anizo_params[part].ax + temp_H * hx);
+	my = (temp_ea * Anizo_params[part].ay + temp_H * hy);
+	mz = (temp_ea * Anizo_params[part].az + temp_H * hz);
+
+	sol[0] = SafeAcos(mz);
+	sol[1] = atan2(my, mx);
 }
+
+//**************************************************************************
