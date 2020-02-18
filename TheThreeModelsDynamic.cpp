@@ -24,11 +24,11 @@ typedef complex<double> doublec;
 constexpr int numRuns = 1;
 
 #define LLG_DYN 1
-//#undef LLG_DYN
+#undef LLG_DYN
 #define LLG_TIMING 1
 #undef LLG_TIMING
-#define SW 1
-#undef SW
+#define SW_DYN 1
+//#undef SW
 #define SW_TIMING 1
 #undef SW_TIMING
 #define SW_APPROX 1
@@ -77,6 +77,8 @@ double stability_test(double solutie[], double solutie_old[]);
 double SW_fcn(double x, void* params);
 void SW_angle_single_full(int part, double* sol, struct sReadData Medium_single, struct Camp H);
 void SW_approx(int part, double* sol, struct sReadData Medium_single, struct Camp H);
+double interpolare_GA(double A, double theta_in, double theta_tar);
+void timp_2D_3D(double t, double h, double* sol_old, double* sol_target, double* sol_new);
 
 //******************************************************
 
@@ -111,7 +113,7 @@ constexpr double	Read_period = Field_period / 1000.0;	// 1e1 picosec -> 1e-11 s
 constexpr double	Freq_Read = 1.0 / Read_period;			// 1e1 ps -> 1e11 Hz (100 GHz)
 
 //vrem sa citim nperiods of Field_period cu Read_period
-constexpr int		nstep = nperiods * (Field_period / Read_period);
+constexpr int		nstep = nperiods * (int)(Field_period / Read_period);
 constexpr double	t_step = t_max / (nstep - 1);		// reading time step
 
 double T_Larmor = 1.0 / (gamma * 2.0 * fabs(K1) / (miu0 * Ms) / (2.0 * M_PI)) * 1.0e12;
@@ -138,8 +140,8 @@ static std::array<std::array<struct sCoef, n_max_vec>, npart> Position_Coef{};
 //******************************************************
 
 char save_file_1_LLG[500] = "E:\\Stoleriu\\C\\special\\3d\\res\\2020\\SW---LLG\\Timing\\LLG_time_Js1-K1e5_th20_100MHz-MHL.dat";
-char save_file_2_SW[500] = "E:\\Stoleriu\\C\\special\\3d\\res\\2020\\SW---LLG\\Timing\\SW_time_Js1-K1e5_th20_static-MHL.dat";
-char save_file_3_SWAPPROX[500] = "E:\\Stoleriu\\C\\special\\3d\\res\\2020\\SW---LLG\\Timing\\SWAPPROX_time_Js1-K1e5_th20_static-MHL.dat";
+char save_file_2_SW[500] = "E:\\Stoleriu\\C\\special\\3d\\res\\2020\\SW---LLG\\Timing\\SW_time_Js1-K1e5_th20_100MHz-MHL.dat";
+char save_file_3_SWAPPROX[500] = "E:\\Stoleriu\\C\\special\\3d\\res\\2020\\SW---LLG\\Timing\\SWAPPROX_time_Js1-K1e5_th20_100MHz-MHL.dat";
 
 //const double FieldMax = +1193662.0 / Ms;
 //const double FieldMin = -1193662.0 / Ms;
@@ -157,7 +159,9 @@ int main()
 	//double       tend = 2000.0;
 	//double		 tstep = 1.0 / (time_norm * 1.0e12);
 	double		 last_t = 0.0;
-	double       y[neq], y_old[neq];
+	double y[neq];
+	double y_old[neq];
+	double y_target[neq];
 
 	for (i = 0; i < nstep; i++)
 	{
@@ -324,7 +328,7 @@ int main()
 	//////////////////////////////////////////////////////////////////////////
 	// MHL SW
 	//////////////////////////////////////////////////////////////////////////
-#ifdef SW
+#ifdef SW_DYN
 	{
 		FILE* fp;
 
@@ -336,7 +340,7 @@ int main()
 		double MHL_projection;
 
 		//initial conditions
-	//////////////////////////////////// SATURARTE!
+		//////////////////////////////////// SATURATE!
 		for (i = 0; i < npart; i++)
 		{
 			Medium[i].theta_sol = H[0].theta;
@@ -380,6 +384,18 @@ int main()
 
 			for (j = 0; j < npart; j++)
 				SW_angle_single_full(j, &y[2 * j + 0], Medium[j], Hext);
+
+			/////////////////////////////////////////////////////////////
+			for (j = 0; j < npart; j++)
+			{
+				y_target[2 * j + 0] = y[2 * j + 0];
+				y_target[2 * j + 1] = y[2 * j + 1];
+				y[2 * j + 0] = y_old[2 * j + 0];
+				y[2 * j + 1] = y_old[2 * j + 1];
+			}
+
+			timp_2D_3D(t_step, Hext.H, y_old, y_target, y);
+			///////////////////////////////////////////////////////////////
 
 			Msys.Mx = 0.0; Msys.My = 0.0; Msys.Mz = 0.0;
 			for (j = 0; j < npart; j++)
@@ -1296,3 +1312,132 @@ void SW_approx(int part, double* sol, struct sReadData Medium_single, struct Cam
 }
 
 //**************************************************************************
+
+double interpolare_GA(double A, double theta_in, double theta_tar)
+{
+	/*if (fabs(theta_in - theta_tar) < 1.0e-5)
+		return 20.0;*/
+
+	double p1, p2, p3, p4, Y0, ampl, expo;
+	double th_in = 0, theta_in_c, tmc, u, x, timp_polynom = 0;
+
+	p1 = 1.58519 - 0.08438 * pow(0.64213, A);
+	p2 = (1.18986 + 1.85715 * pow(0.62603, A)) * theta_tar;
+	p3 = (-0.17513 - 1.72152 * pow(0.62553, A)) * theta_tar * theta_tar;
+	p4 = (0.03716 + 0.36513 * pow(0.62556, A)) * theta_tar * theta_tar * theta_tar;
+
+	Y0 = 16.91794 + 90.13333 * pow(0.71009, A);
+	ampl = 3.85951 + 196.57648 * pow(0.48572, A);
+	expo = exp(-0.5 * (theta_tar - Pis2) * (theta_tar - Pis2) / 0.64 / 0.64);
+
+	theta_in_c = p1 + p2 + p3 + p4;
+	u = 2 * theta_in_c - theta_tar;
+	tmc = Y0 + ampl * expo;
+
+	if (theta_in < theta_tar)
+		th_in = 2 * theta_tar - theta_in;
+	if (theta_in > u)
+		th_in = 2 * u - theta_in;
+	if (theta_in > theta_tar&& theta_in < u)
+		th_in = theta_in;
+
+	x = th_in - theta_in_c;
+	timp_polynom = (x > 0) ? 0.7417 + 0.906 * exp(x / 0.5193) : -(0.7417 + 0.906 * exp(-x / 0.5193));
+
+	return (timp_polynom + tmc);
+}
+
+//**************************************************************************
+
+void timp_2D_3D(double t, double h, double *sol_old, double *sol_target, double *sol_new)
+{
+	double dphi;
+	double raport;
+	double mx0, mx1, my0, my1, mz0, mz1, mxf, myf, mzf;
+	double mx0r, my0r, mz0r, mx1r, my1r, mz1r;
+	double t_max, loco_angle_with_ea_old, loco_angle_with_ea_target, angle_target, angle_new;
+	double th_m0r, th_m1r, ph_m0r, ph_m1r;
+	double s0, c0, s1, c1;
+	double loco_angle_old_uthea, loco_angle_target_uthea;
+
+	t_max = 0;
+
+	for (int i = 0; i < npart; i++) {
+
+		mx0 = sin(sol_old[2 * i + 0]) * cos(sol_old[2 * i + 1]);
+		my0 = sin(sol_old[2 * i + 0]) * sin(sol_old[2 * i + 1]);
+		mz0 = cos(sol_old[2 * i + 0]);
+
+		mx1 = sin(sol_target[2 * i + 0]) * cos(sol_target[2 * i + 1]);
+		my1 = sin(sol_target[2 * i + 0]) * sin(sol_target[2 * i + 1]);
+		mz1 = cos(sol_target[2 * i + 0]);
+
+		loco_angle_with_ea_old = SafeAcos(Anizo_params[i].ax * mx0 + Anizo_params[i].ay * my0 + Anizo_params[i].az * mz0);
+		angle_target = SafeAcos(mx0 * mx1 + my0 * my1 + mz0 * mz1);
+		loco_angle_with_ea_target = SafeAcos(Anizo_params[i].ax * mx1 + Anizo_params[i].ay * my1 + Anizo_params[i].az * mz1);
+		double utheax = cos(Medium[i].theta_ea) * cos(Medium[i].phi_ea);
+		double utheay = cos(Medium[i].theta_ea) * sin(Medium[i].phi_ea);
+		double utheaz = -sin(Medium[i].theta_ea);
+		loco_angle_old_uthea = SafeAcos(mx0 * utheax + my0 * utheay + mz0 * utheaz);
+		loco_angle_target_uthea = SafeAcos(mx1 * utheax + my1 * utheay + mz1 * utheaz);
+		if ((loco_angle_target_uthea<Pis2 && loco_angle_old_uthea>Pis2) || (loco_angle_target_uthea > Pis2&& loco_angle_old_uthea < Pis2))
+			loco_angle_with_ea_old = Pix2 - loco_angle_with_ea_old;
+
+
+		// se roteste pozitia veche a lui H astfel incat acesta sa fie dupa Oz si se afla noul M
+		double R1[3][3], R2[3][3];
+		
+		s0 = sin(sol_target[2 * i + 0]);
+		s1 = sin(sol_target[2 * i + 1]);
+		c0 = cos(sol_target[2 * i + 0]);
+		c1 = cos(sol_target[2 * i + 1]);
+
+		R1[0][0] = c0 * c1;  R1[0][1] = c0 * s1;  R1[0][2] = -s0;
+		R1[1][0] = -s1;       R1[1][1] = c1;       R1[1][2] = 0.0;
+		R1[2][0] = s0 * c1;  R1[2][1] = s0 * s1;  R1[2][2] = c0;
+
+		R2[0][0] = R1[0][0]; R2[0][1] = R1[1][0]; R2[0][2] = R1[2][0];
+		R2[1][0] = R1[0][1]; R2[1][1] = R1[1][1]; R2[1][2] = R1[2][1];
+		R2[2][0] = R1[0][2]; R2[2][1] = R1[1][2]; R2[2][2] = R1[2][2];
+
+		mx0r = R1[0][0] * mx0 + R1[0][1] * my0 + R1[0][2] * mz0;
+		my0r = R1[1][0] * mx0 + R1[1][1] * my0 + R1[1][2] * mz0;
+		mz0r = R1[2][0] * mx0 + R1[2][1] * my0 + R1[2][2] * mz0;
+
+		th_m0r = SafeAcos(mz0r);
+		ph_m0r = atan2(my0r, mx0r);
+
+		// se modifica th_m0r si ph_m0r conform regulilor
+
+		double T_Larmor_Hk = Pix2 / (gamma * Hk * Medium[i].k * Ms) * 1.0e+12;
+
+		raport = FieldMax/*fabs(h)*/ / Hk;
+		raport = (raport < 2.0) ? 2.0 : raport;
+
+		dphi = 0.46 + 0.976 * raport;
+		ph_m1r = ph_m0r + dphi * t * Pix2 / T_Larmor_Hk;
+
+		t_max = T_Larmor_Hk * interpolare_GA(raport, loco_angle_with_ea_old, loco_angle_with_ea_target) / 4.0;
+
+		angle_new = (t < t_max) ? angle_target * 4.0 * (1.0 + fabs(cos(angle_target))) * t / t_max : angle_target;
+		th_m1r = th_m0r - angle_new;
+		if (th_m1r < 0.0)
+			th_m1r = 0.0;
+
+		// se roteste totul inapoi rezultand noua solutie
+		mx1r = sin(th_m1r) * cos(ph_m1r);
+		my1r = sin(th_m1r) * sin(ph_m1r);
+		mz1r = cos(th_m1r);
+
+		mxf = R2[0][0] * mx1r + R2[0][1] * my1r + R2[0][2] * mz1r;
+		myf = R2[1][0] * mx1r + R2[1][1] * my1r + R2[1][2] * mz1r;
+		mzf = R2[2][0] * mx1r + R2[2][1] * my1r + R2[2][2] * mz1r;
+
+		sol_new[2 * i + 0] = SafeAcos(mzf);
+		sol_new[2 * i + 1] = atan2(myf, mxf);
+	}
+
+}
+
+//**************************************************************************
+
