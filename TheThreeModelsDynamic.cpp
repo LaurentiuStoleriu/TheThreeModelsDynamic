@@ -97,16 +97,17 @@ double theta_ea = 0.1 * M_PI / 180.0;
 double phi_ea = 0.1 * M_PI / 180.0;
 
 double theta_h = 20.0 * M_PI / 180.0;
-double phi_h = 0.1 * M_PI / 180.0;
+double phi_h = 0.2 * M_PI / 180.0;
 
 double theta_0 = theta_ea + 1.0e-4;
 double phi_0 = phi_ea + 1.0e-4;
 
 const double Hk = 2.0 * fabs(K1) / miu0 / Ms / Ms;
 
-constexpr double	Field_period = 100000.0;					// 1e5 picosec -> 1e-7 s		1e4 picosec -> 1e-8 s
+constexpr double	Freq_vizual = 500.0;						// MHz
+constexpr double	Field_period = 1.0e6 / Freq_vizual;	// 1e5 picosec -> 1e-7 s		1e4 picosec -> 1e-8 s
 constexpr double	Freq_H = 1.0 / Field_period;			// 1e5 ps -> 1e7 Hz (10 MHz)	1e4 ps -> 1e8 Hz (100 MHz)
-constexpr int		nperiods = 1;
+constexpr int		nperiods = 2;
 constexpr double	t_max = nperiods * Field_period;
 
 constexpr double	Read_period = Field_period / 1000.0;	// 1e1 picosec -> 1e-11 s
@@ -139,9 +140,9 @@ static std::array<std::array<struct sCoef, n_max_vec>, npart> Position_Coef{};
 
 //******************************************************
 
-char save_file_1_LLG[500] = "E:\\Stoleriu\\C\\special\\3d\\res\\2020\\SW---LLG\\Timing\\LLG_time_Js1-K1e5_th20_10MHz-MHL.dat";
-char save_file_2_SW[500] = "E:\\Stoleriu\\C\\special\\3d\\res\\2020\\SW---LLG\\Timing\\SW_time_Js1-K1e5_th20_100MHz-MHL.dat";
-char save_file_3_SWAPPROX[500] = "E:\\Stoleriu\\C\\special\\3d\\res\\2020\\SW---LLG\\Timing\\SWAPPROX_time_Js1-K1e5_th20_100MHz-MHL.dat";
+char save_file_1_LLG[500] = "E:\\Stoleriu\\C\\special\\3d\\res\\2020\\SW---LLG\\Timing\\LLG_time_Js1-K1e5_th20_500MHz-MHL.dat";
+char save_file_2_SW[500] = "E:\\Stoleriu\\C\\special\\3d\\res\\2020\\SW---LLG\\Timing\\SW_time_Js1-K1e5_th20_500MHz-MHL.dat";
+char save_file_3_SWAPPROX[500] = "E:\\Stoleriu\\C\\special\\3d\\res\\2020\\SW---LLG\\Timing\\SWAPPROX_time_Js1-K1e5_th20_10MHz-MHL.dat";
 
 //const double FieldMax = +1193662.0 / Ms;
 //const double FieldMin = -1193662.0 / Ms;
